@@ -89,6 +89,24 @@ async function fetchHrv(client: GarminConnect, date: string) {
   };
 }
 
+async function fetchWeight(client: GarminConnect, date: string) {
+  // Endpoint poids non enveloppé par la librairie : appel direct authentifié.
+  // Retourne la dernière pesée enregistrée à la date donnée ou avant.
+  const raw: any = await (client as any).get(
+    `https://connectapi.garmin.com/weight-service/weight/latest?date=${date}`
+  );
+  const grams = raw?.weight ?? null;
+  return {
+    date_pesee: raw?.calendarDate ?? null,
+    poids_kg: grams != null ? Math.round(grams / 10) / 100 : null,
+    imc: raw?.bmi ?? null,
+    masse_grasse_pct: raw?.bodyFat ?? null,
+    masse_musculaire_kg:
+      raw?.muscleMass != null ? Math.round(raw.muscleMass / 10) / 100 : null,
+    source: raw?.sourceType ?? null,
+  };
+}
+
 function asText(data: unknown) {
   return {
     content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
@@ -112,7 +130,7 @@ function asError(e: unknown, contexte: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Serveur MCP — 3 tools en lecture seule
+// Serveur MCP — 4 tools en lecture seule
 // ---------------------------------------------------------------------------
 const handler = createMcpHandler(
   (server) => {
@@ -162,6 +180,33 @@ const handler = createMcpHandler(
           return asText(await fetchHrv(client, date ?? yesterday()));
         } catch (e) {
           return asError(e, "la récupération de la VFC");
+        }
+      }
+    );
+
+    server.registerTool(
+      "poids_recent",
+      {
+        title: "Dernière pesée",
+        description:
+          "Récupère la dernière pesée enregistrée (poids en kg, IMC, masse grasse et masse musculaire si disponibles) à une date donnée ou avant. Par défaut : aujourd'hui.",
+        inputSchema: {
+          date: z
+            .string()
+            .regex(/^\d{4}-\d{2}-\d{2}$/)
+            .optional()
+            .describe("Date au format YYYY-MM-DD (défaut : aujourd'hui)"),
+        },
+        annotations: { readOnlyHint: true, openWorldHint: true },
+      },
+      async ({ date }) => {
+        try {
+          const client = await getGarminClient();
+          return asText(
+            await fetchWeight(client, date ?? toDateString(new Date()))
+          );
+        } catch (e) {
+          return asError(e, "la récupération du poids");
         }
       }
     );
