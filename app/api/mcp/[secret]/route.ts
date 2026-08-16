@@ -107,6 +107,20 @@ async function fetchWeight(client: GarminConnect, date: string) {
   };
 }
 
+async function fetchActivities(client: GarminConnect, nombre: number) {
+  const raw: any[] = await client.getActivities(0, nombre);
+  return (raw ?? []).map((a: any) => ({
+    date: a?.startTimeLocal ?? null,
+    nom: a?.activityName ?? null,
+    type: a?.activityType?.typeKey ?? null,
+    duree: secondsToHM(a?.duration != null ? Math.round(a.duration) : null),
+    distance_km:
+      a?.distance != null ? Math.round(a.distance / 10) / 100 : null,
+    calories: a?.calories != null ? Math.round(a.calories) : null,
+    fc_moyenne: a?.averageHR != null ? Math.round(a.averageHR) : null,
+  }));
+}
+
 function asText(data: unknown) {
   return {
     content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
@@ -130,7 +144,7 @@ function asError(e: unknown, contexte: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Serveur MCP — 4 tools en lecture seule
+// Serveur MCP — 5 tools en lecture seule
 // ---------------------------------------------------------------------------
 const handler = createMcpHandler(
   (server) => {
@@ -207,6 +221,35 @@ const handler = createMcpHandler(
           );
         } catch (e) {
           return asError(e, "la récupération du poids");
+        }
+      }
+    );
+
+    server.registerTool(
+      "activites_recentes",
+      {
+        title: "Activités récentes",
+        description:
+          "Liste les dernières activités enregistrées (course, natation, etc.) avec date, type, durée, distance, calories dépensées et fréquence cardiaque moyenne. Utile pour ajuster la prise alimentaire.",
+        inputSchema: {
+          nombre: z
+            .number()
+            .int()
+            .min(1)
+            .max(20)
+            .optional()
+            .describe("Nombre d'activités à retourner (défaut : 5, max : 20)"),
+        },
+        annotations: { readOnlyHint: true, openWorldHint: true },
+      },
+      async ({ nombre }) => {
+        try {
+          const client = await getGarminClient();
+          return asText({
+            activites: await fetchActivities(client, nombre ?? 5),
+          });
+        } catch (e) {
+          return asError(e, "la récupération des activités");
         }
       }
     );
