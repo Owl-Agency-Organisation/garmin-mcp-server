@@ -96,8 +96,17 @@ async function fetchWeight(client: GarminConnect, date: string) {
     `https://connectapi.garmin.com/weight-service/weight/latest?date=${date}`
   );
   const grams = raw?.weight ?? null;
+  const ts = raw?.date ?? raw?.timestampGMT ?? null;
   return {
-    date_pesee: raw?.calendarDate ?? null,
+    date_pesee:
+      raw?.calendarDate ??
+      (typeof ts === "number"
+        ? new Date(ts).toISOString().slice(0, 10)
+        : null),
+    heure_pesee:
+      typeof ts === "number"
+        ? new Date(ts).toISOString().slice(11, 16)
+        : null,
     poids_kg: grams != null ? Math.round(grams / 10) / 100 : null,
     imc: raw?.bmi ?? null,
     masse_grasse_pct: raw?.bodyFat ?? null,
@@ -203,7 +212,7 @@ const handler = createMcpHandler(
       {
         title: "Dernière pesée",
         description:
-          "Récupère la dernière pesée enregistrée (poids en kg, IMC, masse grasse et masse musculaire si disponibles) à une date donnée ou avant. Par défaut : aujourd'hui.",
+          "Récupère la dernière pesée enregistrée (poids en kg, IMC, masse grasse et masse musculaire si disponibles) à une date donnée ou avant, avec date et heure de la pesée. Par défaut : aujourd'hui.",
         inputSchema: {
           date: z
             .string()
