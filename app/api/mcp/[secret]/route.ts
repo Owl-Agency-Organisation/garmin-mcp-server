@@ -96,8 +96,13 @@ async function fetchWeight(client: GarminConnect, date: string) {
     `https://connectapi.garmin.com/weight-service/weight/latest?date=${date}`
   );
   const grams = raw?.weight ?? null;
+  const ts = raw?.date ?? raw?.timestampGMT ?? null;
   return {
-    date_pesee: raw?.calendarDate ?? null,
+    date_pesee:
+      raw?.calendarDate ??
+      (typeof ts === "number"
+        ? new Date(ts).toISOString().slice(0, 10)
+        : null),
     poids_kg: grams != null ? Math.round(grams / 10) / 100 : null,
     imc: raw?.bmi ?? null,
     masse_grasse_pct: raw?.bodyFat ?? null,
