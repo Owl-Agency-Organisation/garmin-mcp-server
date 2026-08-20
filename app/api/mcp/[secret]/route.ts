@@ -160,6 +160,13 @@ async function fetchDailySummary(client: GarminConnect, date: string) {
     fc_max: nonNegatif(raw?.maxHeartRate),
     stress_moyen: nonNegatif(raw?.averageStressLevel),
     stress_max: nonNegatif(raw?.maxStressLevel),
+    stress_qualificatif: raw?.stressQualifier ?? null,
+    temps_repos: secondsToHM(nonNegatif(raw?.restStressDuration)),
+    temps_stress_total: secondsToHM(nonNegatif(raw?.totalStressDuration)),
+    temps_stress_bas: secondsToHM(nonNegatif(raw?.lowStressDuration)),
+    temps_stress_moyen: secondsToHM(nonNegatif(raw?.mediumStressDuration)),
+    temps_stress_haut: secondsToHM(nonNegatif(raw?.highStressDuration)),
+    temps_actif: secondsToHM(nonNegatif(raw?.activityStressDuration)),
     pas: raw?.totalSteps ?? null,
     calories_totales: raw?.totalKilocalories ?? null,
     calories_actives: raw?.activeKilocalories ?? null,
@@ -358,7 +365,7 @@ const handler = createMcpHandler(
       {
         title: "Santé du jour",
         description:
-          "Résumé santé d'une journée : body battery (haut, bas, actuel), fréquence cardiaque de repos, stress moyen et max, pas, calories totales et actives. Par défaut : aujourd'hui.",
+          "Résumé santé d'une journée : body battery (haut, bas, actuel), fréquence cardiaque de repos, stress moyen et max, temps passé en repos / stress / actif (états Garmin dérivés de la VFC), pas, calories totales et actives. Par défaut : aujourd'hui.",
         inputSchema: {
           date: z
             .string()
