@@ -130,6 +130,96 @@ async function fetchActivities(client: GarminConnect, nombre: number) {
   }));
 }
 
+let cachedDisplayName: string | null = null;
+
+async function getDisplayName(client: GarminConnect): Promise<string> {
+  if (cachedDisplayName) return cachedDisplayName;
+  const profile: any = await client.getUserProfile();
+  const dn = profile?.displayName;
+  if (!dn) throw new Error("displayName introuvable dans le profil Garmin");
+  cachedDisplayName = dn;
+  return dn;
+}
+
+function nonNegatif(v: unknown): number | null {
+  return typeof v === "number" && v >= 0 ? v : null;
+}
+
+async function fetchDailySummary(client: GarminConnect, date: string) {
+  const dn = await getDisplayName(client);
+  const raw: any = await (client as any).get(
+    `https://connectapi.garmin.com/usersummary-service/usersummary/daily/${dn}?calendarDate=${date}`
+  );
+  return {
+    date,
+    body_battery_haut: raw?.bodyBatteryHighestValue ?? null,
+    body_battery_bas: raw?.bodyBatteryLowestValue ?? null,
+    body_battery_actuel: raw?.bodyBatteryMostRecentValue ?? null,
+    fc_repos: nonNegatif(raw?.restingHeartRate),
+    fc_min: nonNegatif(raw?.minHeartRate),
+    fc_max: nonNegatif(raw?.maxHeartRate),
+    stress_moyen: nonNegatif(raw?.averageStressLevel),
+    stress_max: nonNegatif(raw?.maxStressLevel),
+    pas: raw?.totalSteps ?? null,
+    calories_totales: raw?.totalKilocalories ?? null,
+    calories_actives: raw?.activeKilocalories ?? null,
+  };
+}
+
+async function fetchTrainingLoad(client: GarminConnect, date: string) {
+  const [statusRaw, maxmetRaw] = await Promise.all([
+    (client as any)
+      .get(
+        `https://connectapi.garmin.com/metrics-service/metrics/trainingstatus/aggregated/${date}`
+      )
+      .catch(() => null),
+    (client as any)
+      .get(
+        `https://connectapi.garmin.com/metrics-service/metrics/maxmet/daily/${date}/${date}`
+      )
+      .catch(() => null),
+  ]);
+
+  let statut: string | null = null;
+  let charge: any = null;
+  const tsd = statusRaw?.mostRecentTrainingStatus?.latestTrainingStatusData;
+  if (tsd && typeof tsd === "object") {
+    const first: any = Object.values(tsd)[0];
+    statut =
+      first?.trainingStatusFeedbackPhrase ?? first?.trainingStatus ?? null;
+    const dto = first?.acuteTrainingLoadDTO;
+    if (dto) {
+      charge = {
+        charge_aigue_7j: dto?.dailyTrainingLoadAcute ?? null,
+        charge_chronique_28j: dto?.dailyTrainingLoadChronic ?? null,
+        ratio_aigu_chronique: dto?.dailyAcuteChronicWorkloadRatio ?? null,
+        statut_ratio: dto?.acwrStatus ?? null,
+        plage_optimale:
+          dto?.minTrainingLoadChronic != null &&
+          dto?.maxTrainingLoadChronic != null
+            ? `${Math.round(dto.minTrainingLoadChronic)}-${Math.round(dto.maxTrainingLoadChronic)}`
+            : null,
+      };
+    }
+  }
+
+  const mm = Array.isArray(maxmetRaw)
+    ? maxmetRaw[maxmetRaw.length - 1]
+    : maxmetRaw;
+  const vo2Course =
+    mm?.generic?.vo2MaxPreciseValue ?? mm?.generic?.vo2MaxValue ?? null;
+  const vo2Velo =
+    mm?.cycling?.vo2MaxPreciseValue ?? mm?.cycling?.vo2MaxValue ?? null;
+
+  return {
+    date,
+    statut_entrainement: statut,
+    charge: charge,
+    vo2max_course: vo2Course,
+    vo2max_velo: vo2Velo,
+  };
+}
+
 function asText(data: unknown) {
   return {
     content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
@@ -153,7 +243,7 @@ function asError(e: unknown, contexte: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Serveur MCP — 5 tools en lecture seule
+// Serveur MCP — 7 tools en lecture seule
 // ---------------------------------------------------------------------------
 const handler = createMcpHandler(
   (server) => {
@@ -259,6 +349,60 @@ const handler = createMcpHandler(
           });
         } catch (e) {
           return asError(e, "la récupération des activités");
+        }
+      }
+    );
+
+    server.registerTool(
+      "sante_jour",
+      {
+        title: "Santé du jour",
+        description:
+          "Résumé santé d'une journée : body battery (haut, bas, actuel), fréquence cardiaque de repos, stress moyen et max, pas, calories totales et actives. Par défaut : aujourd'hui.",
+        inputSchema: {
+          date: z
+            .string()
+            .regex(/^\d{4}-\d{2}-\d{2}$/)
+            .optional()
+            .describe("Date au format YYYY-MM-DD (défaut : aujourd'hui)"),
+        },
+        annotations: { readOnlyHint: true, openWorldHint: true },
+      },
+      async ({ date }) => {
+        try {
+          const client = await getGarminClient();
+          return asText(
+            await fetchDailySummary(client, date ?? toDateString(new Date()))
+          );
+        } catch (e) {
+          return asError(e, "la récupération du résumé santé du jour");
+        }
+      }
+    );
+
+    server.registerTool(
+      "charge_entrainement",
+      {
+        title: "Charge d'entraînement et VO2 max",
+        description:
+          "Statut d'entraînement Garmin (productif, maintien, etc.), charge aiguë 7 jours, charge chronique 28 jours, ratio aigu/chronique avec plage optimale, et VO2 max course et vélo. Par défaut : aujourd'hui.",
+        inputSchema: {
+          date: z
+            .string()
+            .regex(/^\d{4}-\d{2}-\d{2}$/)
+            .optional()
+            .describe("Date au format YYYY-MM-DD (défaut : aujourd'hui)"),
+        },
+        annotations: { readOnlyHint: true, openWorldHint: true },
+      },
+      async ({ date }) => {
+        try {
+          const client = await getGarminClient();
+          return asText(
+            await fetchTrainingLoad(client, date ?? toDateString(new Date()))
+          );
+        } catch (e) {
+          return asError(e, "la récupération de la charge d'entraînement");
         }
       }
     );
