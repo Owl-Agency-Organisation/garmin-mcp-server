@@ -147,9 +147,16 @@ function nonNegatif(v: unknown): number | null {
 
 async function fetchDailySummary(client: GarminConnect, date: string) {
   const dn = await getDisplayName(client);
-  const raw: any = await (client as any).get(
-    `https://connectapi.garmin.com/usersummary-service/usersummary/daily/${dn}?calendarDate=${date}`
-  );
+  const [raw, resp] = await Promise.all([
+    (client as any).get(
+      `https://connectapi.garmin.com/usersummary-service/usersummary/daily/${dn}?calendarDate=${date}`
+    ),
+    (client as any)
+      .get(
+        `https://connectapi.garmin.com/wellness-service/wellness/daily/respiration/${date}`
+      )
+      .catch(() => null),
+  ]);
   return {
     date,
     body_battery_haut: raw?.bodyBatteryHighestValue ?? null,
@@ -167,6 +174,10 @@ async function fetchDailySummary(client: GarminConnect, date: string) {
     temps_stress_moyen: secondsToHM(nonNegatif(raw?.mediumStressDuration)),
     temps_stress_haut: secondsToHM(nonNegatif(raw?.highStressDuration)),
     temps_actif: secondsToHM(nonNegatif(raw?.activityStressDuration)),
+    fr_respiratoire_eveil: nonNegatif(resp?.avgWakingRespirationValue),
+    fr_respiratoire_sommeil: nonNegatif(resp?.avgSleepRespirationValue),
+    fr_respiratoire_min: nonNegatif(resp?.lowestRespirationValue),
+    fr_respiratoire_max: nonNegatif(resp?.highestRespirationValue),
     pas: raw?.totalSteps ?? null,
     calories_totales: raw?.totalKilocalories ?? null,
     calories_actives: raw?.activeKilocalories ?? null,
@@ -182,7 +193,7 @@ async function fetchTrainingLoad(client: GarminConnect, date: string) {
       .catch(() => null),
     (client as any)
       .get(
-        `https://connectapi.garmin.com/metrics-service/metrics/maxmet/daily/${date}/${date}`
+        `https://connectapi.garmin.com/metrics-service/metrics/maxmet/latest/${date}`
       )
       .catch(() => null),
   ]);
@@ -227,6 +238,27 @@ async function fetchTrainingLoad(client: GarminConnect, date: string) {
   };
 }
 
+async function fetchReadiness(client: GarminConnect, date: string) {
+  const raw: any = await (client as any).get(
+    `https://connectapi.garmin.com/metrics-service/metrics/trainingreadiness/${date}`
+  );
+  const r = Array.isArray(raw) ? raw[0] : raw;
+  return {
+    date,
+    score: r?.score ?? null,
+    niveau: r?.level ?? null,
+    message: r?.feedbackShort ?? null,
+    temps_recuperation_h:
+      r?.recoveryTime != null
+        ? Math.round((r.recoveryTime / 60) * 10) / 10
+        : null,
+    score_sommeil: r?.sleepScore ?? null,
+    facteur_vfc_pct: r?.hrvFactorPercent ?? null,
+    facteur_sommeil_pct: r?.sleepScoreFactorPercent ?? null,
+    facteur_recuperation_pct: r?.recoveryTimeFactorPercent ?? null,
+  };
+}
+
 function asText(data: unknown) {
   return {
     content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
@@ -250,7 +282,7 @@ function asError(e: unknown, contexte: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Serveur MCP — 7 tools en lecture seule
+// Serveur MCP — 8 tools en lecture seule
 // ---------------------------------------------------------------------------
 const handler = createMcpHandler(
   (server) => {
@@ -365,7 +397,7 @@ const handler = createMcpHandler(
       {
         title: "Santé du jour",
         description:
-          "Résumé santé d'une journée : body battery (haut, bas, actuel), fréquence cardiaque de repos, stress moyen et max, temps passé en repos / stress / actif (états Garmin dérivés de la VFC), pas, calories totales et actives. Par défaut : aujourd'hui.",
+          "Résumé santé d'une journée : body battery (haut, bas, actuel), fréquence cardiaque de repos, stress moyen et max, temps passé en repos / stress / actif (états Garmin dérivés de la VFC), fréquence respiratoire (éveil, sommeil, min, max), pas, calories totales et actives. Par défaut : aujourd'hui.",
         inputSchema: {
           date: z
             .string()
@@ -392,7 +424,7 @@ const handler = createMcpHandler(
       {
         title: "Charge d'entraînement et VO2 max",
         description:
-          "Statut d'entraînement Garmin (productif, maintien, etc.), charge aiguë 7 jours, charge chronique 28 jours, ratio aigu/chronique avec plage optimale, et VO2 max course et vélo. Par défaut : aujourd'hui.",
+          "Statut d'entraînement Garmin (productif, maintien, etc.), charge aiguë 7 jours, charge chronique 28 jours, ratio aigu/chronique avec plage optimale, et VO2 max course et vélo (dernière valeur connue). Par défaut : aujourd'hui.",
         inputSchema: {
           date: z
             .string()
@@ -410,6 +442,33 @@ const handler = createMcpHandler(
           );
         } catch (e) {
           return asError(e, "la récupération de la charge d'entraînement");
+        }
+      }
+    );
+
+    server.registerTool(
+      "training_readiness",
+      {
+        title: "Training readiness",
+        description:
+          "Score de préparation à l'entraînement Garmin (0-100) avec niveau, message, temps de récupération restant et facteurs contributifs (VFC, sommeil, récupération). Par défaut : aujourd'hui.",
+        inputSchema: {
+          date: z
+            .string()
+            .regex(/^\d{4}-\d{2}-\d{2}$/)
+            .optional()
+            .describe("Date au format YYYY-MM-DD (défaut : aujourd'hui)"),
+        },
+        annotations: { readOnlyHint: true, openWorldHint: true },
+      },
+      async ({ date }) => {
+        try {
+          const client = await getGarminClient();
+          return asText(
+            await fetchReadiness(client, date ?? toDateString(new Date()))
+          );
+        } catch (e) {
+          return asError(e, "la récupération du training readiness");
         }
       }
     );
