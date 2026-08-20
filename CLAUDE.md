@@ -31,6 +31,16 @@ Serveur MCP distant (Streamable HTTP) exposant les données santé Garmin Connec
 - Lecture seule stricte : aucun tool d'écriture vers Garmin sans décision explicite de Phil.
 - Après merge : Vercel redéploie `main` automatiquement (~1 min). Vérification sanité : POST sur l'endpoint avec un faux secret → 404 attendu.
 
+## Documentation vivante (obligatoire après chaque merge)
+
+Toute session qui merge une PR sur ce repo **doit** mettre à jour la page Notion du projet avant de clôturer :
+
+- **Page** : « Garmin MCP Server », id `3c221516-46fb-81db-ae11-f058ee97f7b2`, dans « Projets en cours ».
+- **À mettre à jour** : ligne dans le tableau Historique (date + PR + résumé une ligne), tableau des tools si le périmètre a changé, date du bandeau de statut en tête de page.
+- Méthode : `update_content` avec old_str exact issu d'un fetch préalable de la page (règles du contrat AGENTS applicables : pré-lecture avant écriture, remplacements minimaux).
+
+Cette règle est le mécanisme d'automatisation décidé par Phil le 20/08/2026 — pas de GitHub Action, la documentation suit le workflow des agents.
+
 ## Tools exposés (7)
 
 Voir README.md pour le détail. Sommeil, VFC, poids (date + heure), activités (calories), santé du jour (body battery, FC repos, états repos/stress/actif), charge d'entraînement + VO2 max, résumé hebdo.
@@ -44,3 +54,5 @@ Distinction sémantique importante : dans les graphiques Garmin, « Repos » est
 - PR #4 : date + heure de pesée (repli epoch).
 - PR #5 : sante_jour + charge_entrainement.
 - PR #6 : durées des états repos/stress/actif (correction d'interprétation par Phil).
+- PR #7 : CLAUDE.md.
+- PR #8 : règle de documentation vivante (synchronisation Notion après chaque merge).
