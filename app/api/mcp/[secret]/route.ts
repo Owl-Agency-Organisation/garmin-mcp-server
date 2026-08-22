@@ -39,10 +39,13 @@ function toDateString(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-function yesterday(): string {
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
-  return toDateString(d);
+// Date du jour (ou décalée de n jours) dans le fuseau de Phil.
+// Indispensable : le serveur tourne en UTC, et Garmin indexe une nuit de
+// sommeil par la date du réveil — « la nuit dernière » = date du jour.
+function dateParis(offsetJours = 0): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Paris",
+  }).format(new Date(Date.now() + offsetJours * 86400000));
 }
 
 function secondsToHM(s: number | null | undefined): string | null {
@@ -282,7 +285,7 @@ function asError(e: unknown, contexte: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Serveur MCP — 8 tools en lecture seule
+// Serveur MCP — 3 tools en lecture seule
 // ---------------------------------------------------------------------------
 const handler = createMcpHandler(
   (server) => {
@@ -291,20 +294,20 @@ const handler = createMcpHandler(
       {
         title: "Sommeil d'une nuit",
         description:
-          "Récupère le détail du sommeil pour une date donnée (score, durée totale, phases profond/léger/paradoxal, éveil). Par défaut : la nuit dernière.",
+          "Récupère le détail du sommeil pour une date donnée (score, durée totale, phases profond/léger/paradoxal, éveil). Par défaut : la nuit dernière (= date du jour, Garmin indexant une nuit par sa date de réveil).",
         inputSchema: {
           date: z
             .string()
             .regex(/^\d{4}-\d{2}-\d{2}$/)
             .optional()
-            .describe("Date au format YYYY-MM-DD (défaut : hier)"),
+            .describe("Date au format YYYY-MM-DD (défaut : aujourd'hui, Garmin indexant une nuit par la date du réveil)"),
         },
         annotations: { readOnlyHint: true, openWorldHint: true },
       },
       async ({ date }) => {
         try {
           const client = await getGarminClient();
-          return asText(await fetchSleep(client, date ?? yesterday()));
+          return asText(await fetchSleep(client, date ?? dateParis()));
         } catch (e) {
           return asError(e, "la récupération du sommeil");
         }
@@ -316,20 +319,20 @@ const handler = createMcpHandler(
       {
         title: "VFC nocturne",
         description:
-          "Récupère la variabilité de la fréquence cardiaque (VFC/HRV) nocturne pour une date donnée : moyenne, pic 5 min, moyenne 7 jours, statut. Par défaut : la nuit dernière.",
+          "Récupère la variabilité de la fréquence cardiaque (VFC/HRV) nocturne pour une date donnée : moyenne, pic 5 min, moyenne 7 jours, statut. Par défaut : la nuit dernière (= date du jour, Garmin indexant une nuit par sa date de réveil).",
         inputSchema: {
           date: z
             .string()
             .regex(/^\d{4}-\d{2}-\d{2}$/)
             .optional()
-            .describe("Date au format YYYY-MM-DD (défaut : hier)"),
+            .describe("Date au format YYYY-MM-DD (défaut : aujourd'hui, Garmin indexant une nuit par la date du réveil)"),
         },
         annotations: { readOnlyHint: true, openWorldHint: true },
       },
       async ({ date }) => {
         try {
           const client = await getGarminClient();
-          return asText(await fetchHrv(client, date ?? yesterday()));
+          return asText(await fetchHrv(client, date ?? dateParis()));
         } catch (e) {
           return asError(e, "la récupération de la VFC");
         }
@@ -341,7 +344,7 @@ const handler = createMcpHandler(
       {
         title: "Dernière pesée",
         description:
-          "Récupère la dernière pesée enregistrée (poids en kg, IMC, masse grasse et masse musculaire si disponibles) à une date donnée ou avant, avec date et heure de la pesée. Par défaut : aujourd'hui.",
+          "Récupère la dernière pesée enregistrée (poids en kg, IMC, masse grasse et masse musculaire si disponibles) à une date donnée ou avant. Par défaut : aujourd'hui.",
         inputSchema: {
           date: z
             .string()
@@ -355,7 +358,7 @@ const handler = createMcpHandler(
         try {
           const client = await getGarminClient();
           return asText(
-            await fetchWeight(client, date ?? toDateString(new Date()))
+            await fetchWeight(client, date ?? dateParis())
           );
         } catch (e) {
           return asError(e, "la récupération du poids");
@@ -411,7 +414,7 @@ const handler = createMcpHandler(
         try {
           const client = await getGarminClient();
           return asText(
-            await fetchDailySummary(client, date ?? toDateString(new Date()))
+            await fetchDailySummary(client, date ?? dateParis())
           );
         } catch (e) {
           return asError(e, "la récupération du résumé santé du jour");
@@ -424,7 +427,7 @@ const handler = createMcpHandler(
       {
         title: "Charge d'entraînement et VO2 max",
         description:
-          "Statut d'entraînement Garmin (productif, maintien, etc.), charge aiguë 7 jours, charge chronique 28 jours, ratio aigu/chronique avec plage optimale, et VO2 max course et vélo (dernière valeur connue). Par défaut : aujourd'hui.",
+          "Statut d'entraînement Garmin (productif, maintien, etc.), charge aiguë 7 jours, charge chronique 28 jours, ratio aigu/chronique avec plage optimale, et VO2 max course et vélo. Par défaut : aujourd'hui.",
         inputSchema: {
           date: z
             .string()
@@ -438,7 +441,7 @@ const handler = createMcpHandler(
         try {
           const client = await getGarminClient();
           return asText(
-            await fetchTrainingLoad(client, date ?? toDateString(new Date()))
+            await fetchTrainingLoad(client, date ?? dateParis())
           );
         } catch (e) {
           return asError(e, "la récupération de la charge d'entraînement");
@@ -465,7 +468,7 @@ const handler = createMcpHandler(
         try {
           const client = await getGarminClient();
           return asText(
-            await fetchReadiness(client, date ?? toDateString(new Date()))
+            await fetchReadiness(client, date ?? dateParis())
           );
         } catch (e) {
           return asError(e, "la récupération du training readiness");
@@ -478,7 +481,7 @@ const handler = createMcpHandler(
       {
         title: "Résumé 7 jours sommeil + VFC",
         description:
-          "Synthèse des 7 derniers jours : score et durée de sommeil + VFC nocturne, jour par jour. Utile pour analyser tendance et récupération.",
+          "Synthèse des 7 derniers jours (aujourd'hui inclus, fuseau Europe/Paris) : score et durée de sommeil + VFC nocturne, jour par jour. Utile pour analyser tendance et récupération.",
         inputSchema: {},
         annotations: { readOnlyHint: true, openWorldHint: true },
       },
@@ -486,10 +489,8 @@ const handler = createMcpHandler(
         try {
           const client = await getGarminClient();
           const jours: any[] = [];
-          for (let i = 7; i >= 1; i--) {
-            const d = new Date();
-            d.setDate(d.getDate() - i);
-            const date = toDateString(d);
+          for (let i = 6; i >= 0; i--) {
+            const date = dateParis(-i);
             const [sommeil, vfc] = await Promise.all([
               fetchSleep(client, date).catch(() => null),
               fetchHrv(client, date).catch(() => null),
