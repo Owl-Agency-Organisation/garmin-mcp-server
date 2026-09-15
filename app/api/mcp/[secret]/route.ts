@@ -70,6 +70,7 @@ async function fetchSleep(client: GarminConnect, date: string) {
     sommeil_leger: secondsToHM(dto?.lightSleepSeconds),
     sommeil_paradoxal: secondsToHM(dto?.remSleepSeconds),
     eveil: secondsToHM(dto?.awakeSleepSeconds),
+    sieste: secondsToHM(dto?.napTimeSeconds),
   };
 }
 
@@ -119,18 +120,48 @@ async function fetchWeight(client: GarminConnect, date: string) {
   };
 }
 
+// Sensations Garmin : auto-évaluation post-activité stockée 0-100 par pas de 25.
+const SENSATIONS: Record<number, string> = {
+  0: "très mauvaises",
+  25: "mauvaises",
+  50: "neutres",
+  75: "bonnes",
+  100: "très bonnes",
+};
+
 async function fetchActivities(client: GarminConnect, nombre: number) {
   const raw: any[] = await client.getActivities(0, nombre);
-  return (raw ?? []).map((a: any) => ({
-    date: a?.startTimeLocal ?? null,
-    nom: a?.activityName ?? null,
-    type: a?.activityType?.typeKey ?? null,
-    duree: secondsToHM(a?.duration != null ? Math.round(a.duration) : null),
-    distance_km:
-      a?.distance != null ? Math.round(a.distance / 10) / 100 : null,
-    calories: a?.calories != null ? Math.round(a.calories) : null,
-    fc_moyenne: a?.averageHR != null ? Math.round(a.averageHR) : null,
-  }));
+  return Promise.all(
+    (raw ?? []).map(async (a: any) => {
+      // Auto-évaluation (RPE, sensations) : uniquement dans le détail de
+      // l'activité, pas dans la liste. Appel par activité, échec toléré.
+      let d: any = null;
+      if (a?.activityId != null) {
+        d = await (client as any)
+          .get(
+            `https://connectapi.garmin.com/activity-service/activity/${a.activityId}`
+          )
+          .catch(() => null);
+      }
+      const dto = d?.summaryDTO ?? d ?? {};
+      const rpe = dto?.directWorkoutRpe ?? a?.directWorkoutRpe ?? null;
+      const feel = dto?.directWorkoutFeel ?? a?.directWorkoutFeel ?? null;
+      return {
+        date: a?.startTimeLocal ?? null,
+        nom: a?.activityName ?? null,
+        type: a?.activityType?.typeKey ?? null,
+        duree: secondsToHM(a?.duration != null ? Math.round(a.duration) : null),
+        distance_km:
+          a?.distance != null ? Math.round(a.distance / 10) / 100 : null,
+        calories: a?.calories != null ? Math.round(a.calories) : null,
+        fc_moyenne: a?.averageHR != null ? Math.round(a.averageHR) : null,
+        benefice_principal: a?.trainingEffectLabel ?? null,
+        effort_percu_rpe: typeof rpe === "number" ? rpe / 10 : null,
+        sensations:
+          typeof feel === "number" ? (SENSATIONS[feel] ?? String(feel)) : null,
+      };
+    })
+  );
 }
 
 let cachedDisplayName: string | null = null;
@@ -294,7 +325,7 @@ const handler = createMcpHandler(
       {
         title: "Sommeil d'une nuit",
         description:
-          "Récupère le détail du sommeil pour une date donnée (score, durée totale, phases profond/léger/paradoxal, éveil). Par défaut : la nuit dernière (= date du jour, Garmin indexant une nuit par sa date de réveil).",
+          "Récupère le détail du sommeil pour une date donnée (score, durée totale, phases profond/léger/paradoxal, éveil, sieste si détectée). Par défaut : la nuit dernière (= date du jour, Garmin indexant une nuit par sa date de réveil).",
         inputSchema: {
           date: z
             .string()
@@ -371,7 +402,7 @@ const handler = createMcpHandler(
       {
         title: "Activités récentes",
         description:
-          "Liste les dernières activités enregistrées (course, natation, etc.) avec date, type, durée, distance, calories dépensées et fréquence cardiaque moyenne. Utile pour ajuster la prise alimentaire.",
+          "Liste les dernières activités enregistrées (course, natation, etc.) avec date, type, durée, distance, calories, fréquence cardiaque moyenne, bénéfice principal (training effect), effort perçu (RPE sur 10) et sensations si renseignés après la séance. Le détail complet vit sur Strava. Utile pour ajuster la prise alimentaire et suivre le ressenti.",
         inputSchema: {
           nombre: z
             .number()
