@@ -8,8 +8,8 @@ Serveur MCP distant (Streamable HTTP) exposant les données santé Garmin Connec
 
 ## Architecture
 
-- **Stack** : Next.js 15 (App Router) + `mcp-handler` 2.x + `garmin-connect` 1.6.x + Zod 4.
-- **Fichier unique de logique** : `app/api/mcp/[secret]/route.ts` — tout le serveur y vit.
+- **Stack** : Next.js 15 (App Router) + `mcp-handler` 2.x + `garmin-connect` 1.6.x + Zod 4 + `@garmin/fitsdk` (SDK FIT officiel) + `fflate` (dézip).
+- **Logique** : `app/api/mcp/[secret]/route.ts` (serveur, tools, accès Garmin) + `lib/analyse-seance.ts` (décodage FIT et calculs de `analyse_seance`). Module séparé car Next.js refuse tout export non-handler depuis une route, et pour tester hors Next.
 - **Hosting** : Vercel, projet `garmin-mcp-server` (équipe `owl-agency`), production = `main`.
 - **URL connecteur** : `https://garmin-mcp-server-owl-agency.vercel.app/api/mcp/<MCP_SECRET>`.
 - **Auth Garmin** : e-mail + mot de passe en variables d'environnement Vercel (`GARMIN_EMAIL`, `GARMIN_PASSWORD`). API interne non officielle, session et displayName mis en cache 30 min en mémoire de lambda.
@@ -21,7 +21,16 @@ Serveur MCP distant (Streamable HTTP) exposant les données santé Garmin Connec
 3. **Valeurs négatives = absence.** Garmin encode « non mesuré » par -1/-2 sur le stress et la FC. Helper `nonNegatif()` obligatoire sur ces champs.
 4. **displayName requis** pour l'endpoint usersummary — récupéré via `getUserProfile()`, mis en cache module.
 5. **MFA non supporté.** Si Garmin l'impose : migrer vers un token `garth` (généré une fois en local via `uvx garth login`, durée ~1 an), remplacer les variables d'env. Changement de variables et d'init client, pas d'architecture.
-6. **Endpoints internes utilisés** (appels directs via `client.get`) : `hrv-service/hrv/{date}`, `weight-service/weight/latest?date=`, `usersummary-service/usersummary/daily/{displayName}?calendarDate=`, `metrics-service/metrics/trainingstatus/aggregated/{date}`, `metrics-service/metrics/maxmet/daily/{date}/{date}`.
+6. **Endpoints internes utilisés** (appels directs via `client.get`) : `hrv-service/hrv/{date}`, `weight-service/weight/latest?date=`, `usersummary-service/usersummary/daily/{displayName}?calendarDate=`, `wellness-service/wellness/daily/respiration/{date}`, `metrics-service/metrics/trainingstatus/aggregated/{date}`, `metrics-service/metrics/maxmet/latest/{date}`, `metrics-service/metrics/trainingreadiness/{date}`, `activity-service/activity/{id}`, `activitylist-service/activities/search/activities` (params `startDate`/`endDate` pour une date), `download-service/files/activity/{id}` (zip de l'export original, `{ responseType: "arraybuffer" }`).
+7. **Secrets Vercel illisibles.** `GARMIN_*` et `MCP_SECRET` sont « sensibles » : `vercel env pull` les rend vides. Test local d'`analyse_seance` sans identifiants : Phil exporte l'original (⚙ > « Exporter l'original »), zip déposé dans `local/` (ignoré), puis `node --no-warnings scripts/analyse-locale.mjs local/<id>.zip --json`. Vérification prod : Phil appelle le tool depuis claude.ai, durée et erreurs lues dans les logs Vercel.
+8. **FIT : pièges de décodage** (validés sur l'activité vélo du 23/09/2026) :
+   - `garmin-connect.downloadOriginalActivityData` écrit sur disque : ne pas l'utiliser, appeler le service en `arraybuffer`.
+   - Champs inconnus du SDK (`includeUnknownData`) : clé = numéro, valeur **brute non mise à l'échelle** (ex. session 178 transpiration, record 136/143/144).
+   - `leftRightBalance` : le SDK rend le nombre brut (bit droite 0x80 en record, 0x8000 en session/tour) ; exactement 0x8000 devient la chaîne `"right"`.
+   - Altitude min/max souvent absente de la session : repli sur les records.
+   - Les RR (message 78) continuent ~105 s après le dernier record ; décalage RR ↔ records de 2-3 s, stable (alignement par corrélation, sans dérive).
+   - FC poignet (record 136) vs ceinture (144) : écarts réels jusqu'à 54 bpm en début de sortie et en descente — lire le p95, pas seulement le max.
+   - PCO à 0 constant avec les Favero Assioma DUO = non mesuré → null.
 
 ## Conventions du repo
 
@@ -41,9 +50,9 @@ Toute session qui merge une PR sur ce repo **doit** mettre à jour la page Notio
 
 Cette règle est le mécanisme d'automatisation décidé par Phil le 20/08/2026 — pas de GitHub Action, la documentation suit le workflow des agents.
 
-## Tools exposés (7)
+## Tools exposés (9)
 
-Voir README.md pour le détail. Sommeil, VFC, poids (date + heure), activités (calories), santé du jour (body battery, FC repos, états repos/stress/actif), charge d'entraînement + VO2 max, résumé hebdo.
+Voir README.md pour le détail. Sommeil, VFC, poids (date + heure), activités (calories, RPE, sensations), santé du jour (body battery, FC repos, états repos/stress/actif, fréquence respiratoire), charge d'entraînement + VO2 max, training readiness, analyse de séance (FIT original : pédalage, symétrie G/D, DFA-alpha1, course, natation), résumé hebdo.
 
 Distinction sémantique importante : dans les graphiques Garmin, « Repos » est un **état** de la ligne du temps (classification VFC minute par minute), pas la FC de repos. Les deux existent dans `sante_jour` (`temps_repos` vs `fc_repos`).
 
@@ -56,3 +65,7 @@ Distinction sémantique importante : dans les graphiques Garmin, « Repos » est
 - PR #6 : durées des états repos/stress/actif (correction d'interprétation par Phil).
 - PR #7 : CLAUDE.md.
 - PR #8 : règle de documentation vivante (synchronisation Notion après chaque merge).
+- PR #9 : fréquence respiratoire + training_readiness + fix VO2 max.
+- PR #10 : dates par défaut Europe/Paris (`dateParis()`), sommeil/VFC indexés sur la date du réveil.
+- PR #11 : sieste + évaluations d'activités (bénéfice principal, RPE, sensations).
+- PR #12 : tool `analyse_seance` (FIT original décodé côté serveur, validé sur l'activité 24472408487) + correctif durée « 0h60 » → « 1h00 ».
