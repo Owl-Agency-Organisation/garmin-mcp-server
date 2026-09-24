@@ -1,6 +1,11 @@
 import { createMcpHandler } from "mcp-handler";
 import { z } from "zod";
 import { GarminConnect } from "garmin-connect";
+import {
+  SENSATIONS,
+  analyserFit,
+  telechargerFit,
+} from "../../../../lib/analyse-seance";
 
 export const maxDuration = 60;
 
@@ -50,8 +55,10 @@ function dateParis(offsetJours = 0): string {
 
 function secondsToHM(s: number | null | undefined): string | null {
   if (s == null) return null;
-  const h = Math.floor(s / 3600);
-  const m = Math.round((s % 3600) / 60);
+  // Arrondi à la minute avant découpage : 3599 s donne 1h00, pas 0h60.
+  const totalMin = Math.round(s / 60);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
   return `${h}h${String(m).padStart(2, "0")}`;
 }
 
@@ -119,15 +126,6 @@ async function fetchWeight(client: GarminConnect, date: string) {
     source: raw?.sourceType ?? null,
   };
 }
-
-// Sensations Garmin : auto-évaluation post-activité stockée 0-100 par pas de 25.
-const SENSATIONS: Record<number, string> = {
-  0: "très mauvaises",
-  25: "mauvaises",
-  50: "neutres",
-  75: "bonnes",
-  100: "très bonnes",
-};
 
 async function fetchActivities(client: GarminConnect, nombre: number) {
   const raw: any[] = await client.getActivities(0, nombre);
@@ -293,6 +291,86 @@ async function fetchReadiness(client: GarminConnect, date: string) {
   };
 }
 
+// Activités à analyser : activity_id prioritaire, sinon toutes celles de la
+// date (3 max, ordre chronologique), sinon la dernière. Même service de liste
+// que activites_recentes.
+const MAX_SEANCES = 3;
+
+async function resolveActivities(
+  client: GarminConnect,
+  date?: string,
+  activityId?: string
+): Promise<{ id: string; debutLocal: string | null; nom: string | null }[]> {
+  if (activityId) return [{ id: activityId, debutLocal: null, nom: null }];
+  let liste: any[];
+  if (date) {
+    liste =
+      (await (client as any).get(
+        "https://connectapi.garmin.com/activitylist-service/activities/search/activities",
+        { params: { start: 0, limit: 20, startDate: date, endDate: date } }
+      )) ?? [];
+    liste = liste.filter((a: any) =>
+      String(a?.startTimeLocal ?? "").startsWith(date)
+    );
+  } else {
+    liste = (await client.getActivities(0, 1)) ?? [];
+  }
+  return liste
+    .filter((a: any) => a?.activityId != null)
+    .slice(0, MAX_SEANCES)
+    .reverse()
+    .map((a: any) => ({
+      id: String(a.activityId),
+      debutLocal:
+        typeof a?.startTimeLocal === "string"
+          ? a.startTimeLocal.slice(0, 16)
+          : null,
+      nom: a?.activityName ?? null,
+    }));
+}
+
+async function analyseSeances(
+  client: GarminConnect,
+  date?: string,
+  activityId?: string
+) {
+  const debut = Date.now();
+  const cibles = await resolveActivities(client, date, activityId);
+  const seances = await Promise.all(
+    cibles.map(async (c) => {
+      try {
+        const fit = await telechargerFit(client, c.id);
+        return {
+          activity_id: c.id,
+          nom: c.nom,
+          ...analyserFit(fit, { debutLocal: c.debutLocal }),
+        };
+      } catch (e) {
+        // Une activité en échec n'empêche pas les autres.
+        return {
+          activity_id: c.id,
+          nom: c.nom,
+          erreur: e instanceof Error ? e.message : String(e),
+        };
+      }
+    })
+  );
+  return {
+    demande: activityId
+      ? { activity_id: activityId }
+      : { date: date ?? "dernière activité" },
+    seances,
+    temps_traitement_ms: Date.now() - debut,
+  };
+}
+
+// JSON compact (sans indentation) pour les gros volumes : analyse_seance.
+function asCompactText(data: unknown) {
+  return {
+    content: [{ type: "text" as const, text: JSON.stringify(data) }],
+  };
+}
+
 function asText(data: unknown) {
   return {
     content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
@@ -316,7 +394,7 @@ function asError(e: unknown, contexte: string) {
 }
 
 // ---------------------------------------------------------------------------
-// Serveur MCP — 3 tools en lecture seule
+// Serveur MCP — tools en lecture seule
 // ---------------------------------------------------------------------------
 const handler = createMcpHandler(
   (server) => {
@@ -503,6 +581,36 @@ const handler = createMcpHandler(
           );
         } catch (e) {
           return asError(e, "la récupération du training readiness");
+        }
+      }
+    );
+
+    server.registerTool(
+      "analyse_seance",
+      {
+        title: "Analyse détaillée d'une séance (fichier FIT)",
+        description:
+          "Télécharge le fichier FIT original d'une activité et en calcule une analyse fine, impossible avec les agrégats Garmin : réglages de la montre et capteurs, valeurs natives (NP, IF, TSS, équilibre G/D, efficacité de couple, fluidité, phases de puissance, assis/danseuse, fréquence respiratoire, transpiration, impact Body Battery), temps en zones, courbe de puissance, pédalage par tranche de puissance et de cadence, symétrie G/D par quart de séance autour du seuil (écart de part droite fin vs début), cardio (intervalles RR, DFA-alpha1 et seuils estimés, découplement), et selon le sport course (Stryd, splits par km) ou natation (longueurs, SWOLF, allure). Priorité à activity_id ; sinon toutes les activités de la date (3 max) ; sans paramètre : la dernière activité. Aucune position GPS renvoyée.",
+        inputSchema: {
+          date: z
+            .string()
+            .regex(/^\d{4}-\d{2}-\d{2}$/)
+            .optional()
+            .describe("Date au format YYYY-MM-DD : analyse toutes les activités du jour (3 max)"),
+          activity_id: z
+            .string()
+            .regex(/^\d+$/)
+            .optional()
+            .describe("Identifiant Garmin de l'activité (prioritaire sur date)"),
+        },
+        annotations: { readOnlyHint: true, openWorldHint: true },
+      },
+      async ({ date, activity_id }) => {
+        try {
+          const client = await getGarminClient();
+          return asCompactText(await analyseSeances(client, date, activity_id));
+        } catch (e) {
+          return asError(e, "l'analyse de la séance");
         }
       }
     );
