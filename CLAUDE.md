@@ -23,14 +23,14 @@ Serveur MCP distant (Streamable HTTP) exposant les données santé Garmin Connec
 5. **MFA non supporté.** Si Garmin l'impose : migrer vers un token `garth` (généré une fois en local via `uvx garth login`, durée ~1 an), remplacer les variables d'env. Changement de variables et d'init client, pas d'architecture.
 6. **Endpoints internes utilisés** (appels directs via `client.get`) : `hrv-service/hrv/{date}`, `weight-service/weight/latest?date=`, `usersummary-service/usersummary/daily/{displayName}?calendarDate=`, `wellness-service/wellness/daily/respiration/{date}`, `metrics-service/metrics/trainingstatus/aggregated/{date}`, `metrics-service/metrics/maxmet/latest/{date}`, `metrics-service/metrics/trainingreadiness/{date}`, `activity-service/activity/{id}`, `activitylist-service/activities/search/activities` (params `startDate`/`endDate` pour une date), `download-service/files/activity/{id}` (zip de l'export original, `{ responseType: "arraybuffer" }`).
 7. **Secrets Vercel illisibles.** `GARMIN_*` et `MCP_SECRET` sont « sensibles » : `vercel env pull` les rend vides. Test local d'`analyse_seance` sans identifiants : Phil exporte l'original (⚙ > « Exporter l'original »), zip déposé dans `local/` (ignoré), puis `node --no-warnings scripts/analyse-locale.mjs local/<id>.zip --json`. Vérification prod : Phil appelle le tool depuis claude.ai, durée et erreurs lues dans les logs Vercel.
-8. **FIT : pièges de décodage** (validés sur l'activité vélo du 23/09/2026) :
+8. **FIT : pièges de décodage** (constatés sur une sortie vélo réelle, montre Forerunner, capteurs ANT+) :
    - `garmin-connect.downloadOriginalActivityData` écrit sur disque : ne pas l'utiliser, appeler le service en `arraybuffer`.
    - Champs inconnus du SDK (`includeUnknownData`) : clé = numéro, valeur **brute non mise à l'échelle** (ex. session 178 transpiration, record 136/143/144).
    - `leftRightBalance` : le SDK rend le nombre brut (bit droite 0x80 en record, 0x8000 en session/tour) ; exactement 0x8000 devient la chaîne `"right"`.
    - Altitude min/max souvent absente de la session : repli sur les records.
-   - Les RR (message 78) continuent ~105 s après le dernier record ; décalage RR ↔ records de 2-3 s, stable (alignement par corrélation, sans dérive).
-   - FC poignet (record 136) vs ceinture (144) : écarts réels jusqu'à 54 bpm en début de sortie et en descente — lire le p95, pas seulement le max.
-   - PCO à 0 constant avec les Favero Assioma DUO = non mesuré → null.
+   - Les RR (message 78) peuvent continuer après le dernier record ; décalage RR ↔ records de 2-3 s, stable (alignement par corrélation, sans dérive).
+   - FC poignet (record 136) vs ceinture (144) : écarts réels de plusieurs dizaines de bpm en début de sortie et en descente — lire le p95, pas seulement le max.
+   - PCO à 0 constant (pédales qui ne le mesurent pas, ex. Favero Assioma DUO) = non mesuré → null.
 
 ## Conventions du repo
 
@@ -68,4 +68,4 @@ Distinction sémantique importante : dans les graphiques Garmin, « Repos » est
 - PR #9 : fréquence respiratoire + training_readiness + fix VO2 max.
 - PR #10 : dates par défaut Europe/Paris (`dateParis()`), sommeil/VFC indexés sur la date du réveil.
 - PR #11 : sieste + évaluations d'activités (bénéfice principal, RPE, sensations).
-- PR #12 : tool `analyse_seance` (FIT original décodé côté serveur, validé sur l'activité 24472408487) + correctif durée « 0h60 » → « 1h00 ».
+- PR #12 : tool `analyse_seance` (FIT original décodé côté serveur, validé contre des valeurs de référence relevées dans Garmin Connect) + correctif durée « 0h60 » → « 1h00 ». Repo public : aucune valeur de santé ni identifiant d'activité dans le code, la doc ou les PR.
