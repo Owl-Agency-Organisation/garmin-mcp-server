@@ -10,7 +10,7 @@ comme connecteur personnalisé dans claude.ai (mobile inclus).
 | `sommeil_recent` | Score, durée totale, phases (profond / léger / paradoxal), éveil |
 | `vfc_recente` | VFC nocturne moyenne, pic 5 min, moyenne 7 jours, statut |
 | `poids_recent` | Dernière pesée : poids (kg), IMC, masse grasse, masse musculaire, date et heure |
-| `activites_recentes` | N dernières activités : type, durée, distance, calories, FC moyenne, bénéfice principal, RPE, sensations |
+| `activites_recentes` | N dernières activités : identifiant (pour `analyse_seance`), type, durée, distance, calories, FC moyenne, bénéfice principal, RPE, sensations |
 | `sante_jour` | Body battery (haut/bas/actuel), FC repos, stress moyen/max, pas, calories |
 | `charge_entrainement` | Statut d'entraînement, charge aiguë/chronique, ratio + plage optimale, VO2 max course et vélo |
 | `training_readiness` | Score de préparation, niveau, temps de récupération, facteurs VFC/sommeil/récupération |
@@ -47,7 +47,9 @@ Méthodes : NP = moyenne glissante 30 s à la puissance 4 (zéros inclus) ;
 DFA-alpha1 = fenêtres de 120 s par pas de 30 s, boîtes 4-16 battements,
 artefacts > 20 % de la médiane glissante sur 11 battements retirés, fenêtre
 rejetée au-delà de 5 % d'artefacts ou sous 100 battements, seuils par
-régression linéaire (fenêtres à FC > 110, seuil non calculé si |r| < 0,3).
+régression linéaire (fenêtres à FC > 110, seuil non calculé si |r| < 0,3),
+seuils FC arrondis au bpm ; temps sous / entre / au-dessus avec coupure
+stricte (FC < seuil).
 
 ### Test local (sans identifiants)
 
