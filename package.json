@@ -8,6 +8,8 @@
     "start": "next start"
   },
   "dependencies": {
+    "@garmin/fitsdk": "^21.217.0",
+    "fflate": "^0.8.3",
     "garmin-connect": "^1.6.2",
     "mcp-handler": "^2.1.1",
     "next": "^15.1.0",
