@@ -50,8 +50,10 @@ function dateParis(offsetJours = 0): string {
 
 function secondsToHM(s: number | null | undefined): string | null {
   if (s == null) return null;
-  const h = Math.floor(s / 3600);
-  const m = Math.round((s % 3600) / 60);
+  // Arrondi à la minute avant découpage : 3599 s donne 1h00, pas 0h60.
+  const totalMin = Math.round(s / 60);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
   return `${h}h${String(m).padStart(2, "0")}`;
 }
 
