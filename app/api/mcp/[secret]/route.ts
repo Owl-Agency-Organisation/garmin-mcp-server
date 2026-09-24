@@ -40,10 +40,6 @@ async function getGarminClient(): Promise<GarminConnect> {
 // ---------------------------------------------------------------------------
 // Helpers dates & formatage
 // ---------------------------------------------------------------------------
-function toDateString(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
 // Date du jour (ou décalée de n jours) dans le fuseau de Phil.
 // Indispensable : le serveur tourne en UTC, et Garmin indexe une nuit de
 // sommeil par la date du réveil — « la nuit dernière » = date du jour.

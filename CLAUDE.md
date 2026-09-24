@@ -35,6 +35,7 @@ Serveur MCP distant (Streamable HTTP) exposant les données santé Garmin Connec
 ## Conventions du repo
 
 - **Branches courtes depuis `main`**, une par évolution, PR, **squash merge**. Pas de branche `develop` persistante (les squash la font diverger — conflit vécu sur la PR #1).
+- **Supprimer la branche après merge** (`gh pr merge --squash --delete-branch`). Ménage du 24/09/2026 : 11 branches mergées supprimées, dont `develop`.
 - **Compilation locale avant tout push** (`npm run build`). Aucun push de code non compilé.
 - Nommage des tools et des champs de sortie **en français** (`sommeil_recent`, `poids_kg`) : ce sont les libellés que Claude manipule en conversation avec Phil.
 - Lecture seule stricte : aucun tool d'écriture vers Garmin sans décision explicite de Phil.
