@@ -145,6 +145,7 @@ async function fetchActivities(client: GarminConnect, nombre: number) {
       const rpe = dto?.directWorkoutRpe ?? a?.directWorkoutRpe ?? null;
       const feel = dto?.directWorkoutFeel ?? a?.directWorkoutFeel ?? null;
       return {
+        activity_id: a?.activityId != null ? String(a.activityId) : null,
         date: a?.startTimeLocal ?? null,
         nom: a?.activityName ?? null,
         type: a?.activityType?.typeKey ?? null,
@@ -480,7 +481,7 @@ const handler = createMcpHandler(
       {
         title: "Activités récentes",
         description:
-          "Liste les dernières activités enregistrées (course, natation, etc.) avec date, type, durée, distance, calories, fréquence cardiaque moyenne, bénéfice principal (training effect), effort perçu (RPE sur 10) et sensations si renseignés après la séance. Le détail complet vit sur Strava. Utile pour ajuster la prise alimentaire et suivre le ressenti.",
+          "Liste les dernières activités enregistrées (course, natation, etc.) avec identifiant (activity_id, à passer à analyse_seance pour l'analyse détaillée d'une séance), date, type, durée, distance, calories, fréquence cardiaque moyenne, bénéfice principal (training effect), effort perçu (RPE sur 10) et sensations si renseignés après la séance. Le détail complet vit sur Strava. Utile pour ajuster la prise alimentaire et suivre le ressenti.",
         inputSchema: {
           nombre: z
             .number()
@@ -590,7 +591,7 @@ const handler = createMcpHandler(
       {
         title: "Analyse détaillée d'une séance (fichier FIT)",
         description:
-          "Télécharge le fichier FIT original d'une activité et en calcule une analyse fine, impossible avec les agrégats Garmin : réglages de la montre et capteurs, valeurs natives (NP, IF, TSS, équilibre G/D, efficacité de couple, fluidité, phases de puissance, assis/danseuse, fréquence respiratoire, transpiration, impact Body Battery), temps en zones, courbe de puissance, pédalage par tranche de puissance et de cadence, symétrie G/D par quart de séance autour du seuil (écart de part droite fin vs début), cardio (intervalles RR, DFA-alpha1 et seuils estimés, découplement), et selon le sport course (Stryd, splits par km) ou natation (longueurs, SWOLF, allure). Priorité à activity_id ; sinon toutes les activités de la date (3 max) ; sans paramètre : la dernière activité. Aucune position GPS renvoyée.",
+          "Télécharge le fichier FIT original d'une activité et en calcule une analyse fine, impossible avec les agrégats Garmin : réglages de la montre et capteurs, valeurs natives (NP, IF, TSS, équilibre G/D, efficacité de couple, fluidité, phases de puissance, assis/danseuse, fréquence respiratoire, transpiration, impact Body Battery), temps en zones, courbe de puissance, pédalage par tranche de puissance et de cadence, symétrie G/D par quart de séance autour du seuil (écart de part droite fin vs début), cardio (intervalles RR, DFA-alpha1 et seuils estimés, découplement), et selon le sport course (Stryd, splits par km) ou natation (longueurs, SWOLF, allure). Priorité à activity_id (fourni par activites_recentes) ; sinon toutes les activités de la date (3 max) ; sans paramètre : la dernière activité. Aucune position GPS renvoyée.",
         inputSchema: {
           date: z
             .string()

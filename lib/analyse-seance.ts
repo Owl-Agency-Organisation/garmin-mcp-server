@@ -768,8 +768,10 @@ function seuils(fenetres: Fenetre[]) {
       : null;
   return {
     fenetres: f.length,
-    fc_a1_075: rnd(resoudre(regFc, 0.75), 1),
-    fc_a1_050: rnd(resoudre(regFc, 0.5), 1),
+    // Seuils arrondis au bpm (décision Phil) : la FC étant entière, une seconde
+    // à 135 bpm est « au seuil » et non « sous le seuil » de 135.
+    fc_a1_075: rnd(resoudre(regFc, 0.75)),
+    fc_a1_050: rnd(resoudre(regFc, 0.5)),
     r_fc: rnd(regFc?.r ?? null, 2),
     puissance_a1_075: rnd(resoudre(regP, 0.75)),
     puissance_a1_050: rnd(resoudre(regP, 0.5)),
@@ -966,7 +968,7 @@ function blocCardio(hrv: Msg[], serie: Seconde[]) {
           ? { sous_a1_075: sous, entre: entre, au_dessus_a1_050: dessus }
           : null,
       fiabilite:
-        "DFA-alpha1 : méthode émergente. Les seuils (0,75 ≈ seuil aérobie, 0,50 ≈ seuil anaérobie) sont des estimations par régression, sensibles aux artefacts RR et nettement moins fiables en sortie vallonnée (effort non stationnaire). Seuil non calculé (null) si |r| < 0,3. À recouper avec r, le nombre de fenêtres, les fenêtres stables et les sensations.",
+        "DFA-alpha1 : méthode émergente. Les seuils (0,75 ≈ seuil aérobie, 0,50 ≈ seuil anaérobie, arrondis au bpm) sont des estimations par régression, sensibles aux artefacts RR et nettement moins fiables en sortie vallonnée (effort non stationnaire). Seuil non calculé (null) si |r| < 0,3. À recouper avec r, le nombre de fenêtres, les fenêtres stables et les sensations.",
     },
   };
 }

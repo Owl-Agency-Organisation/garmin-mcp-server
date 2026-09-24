@@ -69,3 +69,4 @@ Distinction sémantique importante : dans les graphiques Garmin, « Repos » est
 - PR #10 : dates par défaut Europe/Paris (`dateParis()`), sommeil/VFC indexés sur la date du réveil.
 - PR #11 : sieste + évaluations d'activités (bénéfice principal, RPE, sensations).
 - PR #12 : tool `analyse_seance` (FIT original décodé côté serveur, validé contre des valeurs de référence relevées dans Garmin Connect) + correctif durée « 0h60 » → « 1h00 ». Repo public : aucune valeur de santé ni identifiant d'activité dans le code, la doc ou les PR.
+- PR #13 : seuils DFA-alpha1 arrondis au bpm (décision Phil, par simplicité) + `activity_id` dans `activites_recentes` (enchaînement liste → `analyse_seance`).
