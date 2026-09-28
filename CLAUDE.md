@@ -43,7 +43,7 @@ Serveur MCP distant (Streamable HTTP) exposant les données santé Garmin Connec
 ## Conventions du repo
 
 - **Branches courtes depuis `main`**, une par évolution, PR, **squash merge**. Pas de branche `develop` persistante (les squash la font diverger — conflit vécu sur la PR #1).
-- **Supprimer la branche après merge** (`gh pr merge --squash --delete-branch`). Ménage du 24/09/2026 : 11 branches mergées supprimées, dont `develop`.
+- **Suppression des branches après merge : automatique côté repo** (réglage GitHub `delete_branch_on_merge` activé le 28/09/2026). Elle vaut pour tout squash merge, y compris depuis claude.ai, qui n'a pas d'outil de suppression de branche ; `--delete-branch` devient superflu. Ménage du 24/09/2026 : 11 branches mergées supprimées, dont `develop`.
 - **Compilation locale avant tout push** (`npm run build`). Aucun push de code non compilé.
 - **`package-lock.json` versionné** (PR #15) : tout changement de dépendance passe par `npm install` et le commit du lockfile, pour que Vercel installe exactement les versions compilées en local.
 - Nommage des tools et des champs de sortie **en français** (`sommeil_recent`, `poids_kg`) : ce sont les libellés que Claude manipule en conversation avec Phil.
@@ -83,3 +83,4 @@ Distinction sémantique importante : dans les graphiques Garmin, « Repos » est
 - PR #14 : ménage (code mort, suppression des branches mergées).
 - PR #15 : `package-lock.json` versionné (versions figées, déploiements reproductibles).
 - PR #16 : endpoint HTTP `GET /api/fit/<secret>/<activityId>` pour que Claude récupère lui-même le FIT original (sans changement des 9 tools ni du connecteur).
+- PR #18 : suppression automatique des branches à la fusion (réglage repo `delete_branch_on_merge`), convention mise à jour.
