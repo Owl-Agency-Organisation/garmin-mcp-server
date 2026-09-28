@@ -10,8 +10,10 @@ Serveur MCP distant (Streamable HTTP) exposant les données santé Garmin Connec
 
 - **Stack** : Next.js 15 (App Router) + `mcp-handler` 2.x + `garmin-connect` 1.6.x + Zod 4 + `@garmin/fitsdk` (SDK FIT officiel) + `fflate` (dézip).
 - **Logique** : `app/api/mcp/[secret]/route.ts` (serveur, tools, accès Garmin) + `lib/analyse-seance.ts` (décodage FIT et calculs de `analyse_seance`). Module séparé car Next.js refuse tout export non-handler depuis une route, et pour tester hors Next.
+- **Endpoint FIT** : `app/api/fit/[secret]/[activityId]/route.ts` (GET, FIT original en binaire) + `lib/telechargement-fit.ts` (fonctions pures) + `lib/garmin-client.ts` (copie conforme de `getGarminClient`, `route.ts` du connecteur laissé intact).
 - **Hosting** : Vercel, projet `garmin-mcp-server` (équipe `owl-agency`), production = `main`.
 - **URL connecteur** : `https://garmin-mcp-server-owl-agency.vercel.app/api/mcp/<MCP_SECRET>`.
+- **URL endpoint FIT** : `https://garmin-mcp-server-owl-agency.vercel.app/api/fit/<MCP_SECRET>/<activityId>` (même secret, même refus en 404).
 - **Auth Garmin** : e-mail + mot de passe en variables d'environnement Vercel (`GARMIN_EMAIL`, `GARMIN_PASSWORD`). API interne non officielle, session et displayName mis en cache 30 min en mémoire de lambda.
 
 ## Pièges connus (ne pas redécouvrir)
@@ -31,12 +33,19 @@ Serveur MCP distant (Streamable HTTP) exposant les données santé Garmin Connec
    - Les RR (message 78) peuvent continuer après le dernier record ; décalage RR ↔ records de 2-3 s, stable (alignement par corrélation, sans dérive).
    - FC poignet (record 136) vs ceinture (144) : écarts réels de plusieurs dizaines de bpm en début de sortie et en descente — lire le p95, pas seulement le max.
    - PCO à 0 constant (pédales qui ne le mesurent pas, ex. Favero Assioma DUO) = non mesuré → null.
+9. **Endpoint FIT** (`/api/fit/<secret>/<activityId>`) :
+   - Renvoie le FIT **brut, positions GPS comprises**, contrairement à `analyse_seance` qui n'en renvoie aucune. Même secret que le connecteur : une fuite du secret expose aussi les tracés.
+   - Tout refus en 404 au corps neutre `Not found`, **toutes méthodes** (POST, PUT, PATCH, DELETE, OPTIONS exportées exprès : sinon Next répond 405/204 et trahit la route). Rien n'est loggé : le secret est dans l'URL.
+   - Sans identifiant d'activité, ou avec un secret vide (`//`), c'est Next qui répond (page 404 standard, redirection 308 pour `//`), comme pour le connecteur.
+   - `getGarminClient` existe en deux exemplaires (connecteur et `lib/garmin-client.ts`) : toute modification du login (ex. migration `garth`) doit être faite **dans les deux**, ou le connecteur basculé sur `lib/garmin-client.ts`.
+   - Garde-fou `estFit` : une réponse Garmin qui n'est pas un FIT (page d'erreur, JSON) donne 404, jamais un faux `.fit`.
 
 ## Conventions du repo
 
 - **Branches courtes depuis `main`**, une par évolution, PR, **squash merge**. Pas de branche `develop` persistante (les squash la font diverger — conflit vécu sur la PR #1).
 - **Supprimer la branche après merge** (`gh pr merge --squash --delete-branch`). Ménage du 24/09/2026 : 11 branches mergées supprimées, dont `develop`.
 - **Compilation locale avant tout push** (`npm run build`). Aucun push de code non compilé.
+- **`package-lock.json` versionné** (PR #15) : tout changement de dépendance passe par `npm install` et le commit du lockfile, pour que Vercel installe exactement les versions compilées en local.
 - Nommage des tools et des champs de sortie **en français** (`sommeil_recent`, `poids_kg`) : ce sont les libellés que Claude manipule en conversation avec Phil.
 - Lecture seule stricte : aucun tool d'écriture vers Garmin sans décision explicite de Phil.
 - Après merge : Vercel redéploie `main` automatiquement (~1 min). Vérification sanité : POST sur l'endpoint avec un faux secret → 404 attendu.
@@ -71,3 +80,6 @@ Distinction sémantique importante : dans les graphiques Garmin, « Repos » est
 - PR #11 : sieste + évaluations d'activités (bénéfice principal, RPE, sensations).
 - PR #12 : tool `analyse_seance` (FIT original décodé côté serveur, validé contre des valeurs de référence relevées dans Garmin Connect) + correctif durée « 0h60 » → « 1h00 ». Repo public : aucune valeur de santé ni identifiant d'activité dans le code, la doc ou les PR.
 - PR #13 : seuils DFA-alpha1 arrondis au bpm (décision Phil, par simplicité) + `activity_id` dans `activites_recentes` (enchaînement liste → `analyse_seance`).
+- PR #14 : ménage (code mort, suppression des branches mergées).
+- PR #15 : `package-lock.json` versionné (versions figées, déploiements reproductibles).
+- PR #16 : endpoint HTTP `GET /api/fit/<secret>/<activityId>` pour que Claude récupère lui-même le FIT original (sans changement des 9 tools ni du connecteur).
