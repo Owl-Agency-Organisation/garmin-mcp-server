@@ -64,9 +64,34 @@ node --no-warnings scripts/analyse-locale.mjs local/<activityId>.zip --json
 `scripts/test-synthetique.mjs` encode des FIT course (Stryd) et natation
 fictifs pour tester ces blocs sans données réelles.
 
+## Endpoint de téléchargement du FIT original
+
+```
+GET https://<projet>.vercel.app/api/fit/<MCP_SECRET>/<activityId>
+```
+
+Renvoie le FIT original de l'activité (extrait du zip « Exporter l'original »)
+en `application/octet-stream`, `Content-Disposition: attachment;
+filename="<activityId>.fit"`, `Cache-Control: no-store`. Permet à Claude de
+récupérer lui-même le fichier depuis son environnement d'exécution
+(`activity_id` fourni par `activites_recentes`).
+
+- Même protection que le connecteur : secret en segment de chemin, tout refus
+  (mauvais secret, identifiant invalide, activité inconnue, échec Garmin,
+  autre méthode que GET) en **404** au corps neutre. Jamais de 401.
+- Lecture seule, rien n'est stocké ni loggé.
+- Contrairement à `analyse_seance`, le fichier contient les **positions GPS**.
+
+```bash
+curl -fo <activityId>.fit https://<projet>.vercel.app/api/fit/<MCP_SECRET>/<activityId>
+```
+
 ## Architecture
 
 - **Next.js + `mcp-handler`** sur Vercel, endpoint `POST /api/mcp/<secret>`
+- **`app/api/fit/[secret]/[activityId]`** : endpoint de téléchargement du FIT
+  original (client Garmin dans `lib/garmin-client.ts`, helpers dans
+  `lib/telechargement-fit.ts`).
 - **`lib/analyse-seance.ts`** : décodage FIT et calculs de `analyse_seance`
   (module séparé : Next.js n'autorise que les handlers en export de route).
 - **`garmin-connect`** (librairie non officielle) : login e-mail/mot de passe
