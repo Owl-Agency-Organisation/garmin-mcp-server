@@ -7,11 +7,11 @@ comme connecteur personnalisé dans claude.ai (mobile inclus).
 
 | Tool | Données |
 |---|---|
-| `sommeil_recent` | Score, durée totale, phases (profond / léger / paradoxal), éveil |
+| `sommeil_recent` | Score, durée totale, phases (profond / léger / paradoxal), éveil, sieste |
 | `vfc_recente` | VFC nocturne moyenne, pic 5 min, moyenne 7 jours, statut |
 | `poids_recent` | Dernière pesée : poids (kg), IMC, masse grasse, masse musculaire, date et heure |
 | `activites_recentes` | N dernières activités : identifiant (pour `analyse_seance`), type, durée, distance, calories, FC moyenne, bénéfice principal, RPE, sensations |
-| `sante_jour` | Body battery (haut/bas/actuel), FC repos, stress moyen/max, pas, calories |
+| `sante_jour` | Body battery (haut/bas/actuel), FC repos, stress moyen/max, temps repos/stress/actif, fréquence respiratoire (éveil/sommeil/min/max), pas, calories |
 | `charge_entrainement` | Statut d'entraînement, charge aiguë/chronique, ratio + plage optimale, VO2 max course et vélo |
 | `training_readiness` | Score de préparation, niveau, temps de récupération, facteurs VFC/sommeil/récupération |
 | `analyse_seance` | Analyse du fichier FIT original d'une séance (voir ci-dessous) |
